@@ -62,6 +62,29 @@ TEST(ScalarTestUnaryOperators, SqrtLongDoubleSecondOrder) { test_sqrt<long doubl
 TEST(ScalarTestUnaryOperators, SqrtDoubleFirstOrderDynamic) { test_sqrt<double, false, true>(); }
 TEST(ScalarTestUnaryOperators, SqrtDoubleSecondOrderDynamic) { test_sqrt<double, true, true>(); }
 
+template <typename PassiveT, bool with_hessian>
+void test_sqrt_zero()
+{
+    // sqrt(0) is not differentiable, but must stay finite (subgradient
+    // convention: zero derivatives) to support degenerate elements.
+    using ADouble = TinyAD::Scalar<1, PassiveT, with_hessian>;
+    const ADouble a = ADouble::known_derivatives(0.0, 0.0, 0.0);
+    const ADouble f = sqrt(a);
+    ASSERT_TRUE(std::isfinite(f.val));
+    ASSERT_TRUE(f.grad.allFinite());
+    ASSERT_DOUBLE_EQ(f.grad(0), 0.0);
+    if constexpr (with_hessian)
+    {
+        ASSERT_TRUE(f.Hess.allFinite());
+        ASSERT_DOUBLE_EQ(f.Hess(0, 0), 0.0);
+    }
+}
+
+TEST(ScalarTestUnaryOperators, SqrtZeroFloatFirstOrder) { test_sqrt_zero<float, false>(); }
+TEST(ScalarTestUnaryOperators, SqrtZeroDoubleFirstOrder) { test_sqrt_zero<double, false>(); }
+TEST(ScalarTestUnaryOperators, SqrtZeroFloatSecondOrder) { test_sqrt_zero<float, true>(); }
+TEST(ScalarTestUnaryOperators, SqrtZeroDoubleSecondOrder) { test_sqrt_zero<double, true>(); }
+
 template <typename PassiveT, bool with_hessian, bool dynamic = false>
 void test_sqr()
 {

@@ -239,6 +239,15 @@ struct Scalar
         TINYAD_CHECK_FINITE_IF_ENABLED_AD(a);
         if constexpr (TINYAD_ENABLE_OPERATOR_LOGGING) TINYAD_DEBUG_VAR(__FUNCTION__);
         const PassiveT f = std::sqrt(a.val);
+
+        // At a.val == 0, sqrt is not differentiable (the chain rule coefficients
+        // would be infinite and produce NaNs via inf * 0). This case is common
+        // on degenerate elements, e.g. collapsed edges via sqrt(sqr(d)) or
+        // hypot(0, 0). Return zero derivatives (subgradient convention) to keep
+        // gradients and Hessians finite. Away from 0, results are unchanged.
+        if (f == (PassiveT)0.0)
+            return chain(f, (PassiveT)0.0, (PassiveT)0.0, a);
+
         return chain(
                     f,
                     (PassiveT)0.5 / f,

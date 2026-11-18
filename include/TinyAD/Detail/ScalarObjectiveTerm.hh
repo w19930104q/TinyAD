@@ -26,6 +26,10 @@ struct ScalarObjectiveTermBase
 
     virtual Eigen::Index n_elements() const = 0;
 
+    // Re-target the settings reference (e.g. after the owning ScalarFunction was moved).
+    virtual void set_settings(
+            const EvalSettings& _settings) = 0;
+
     virtual PassiveT eval(
             const Eigen::VectorX<PassiveT>& _x) const = 0;
 
@@ -122,7 +126,7 @@ struct ScalarObjectiveTerm : ScalarObjectiveTermBase<PassiveT>
             const EvalSettings& _settings)
         : n_vars_global(_n_global),
           element_handles(_element_handles),
-          settings(_settings)
+          settings(&_settings)
     {
         static_assert (std::is_same_v<
                 std::decay_t<decltype((_eval_element(std::declval<PassiveElementType&>())))>,
@@ -147,8 +151,9 @@ struct ScalarObjectiveTerm : ScalarObjectiveTermBase<PassiveT>
     {
         if (this != &other)
         {
-            // n_vars_global and settings are const, so we can't move them
+            // n_vars_global is const, so we can't move it
             element_handles = std::move(other.element_handles);
+            settings = other.settings;
             type_erased_lambda = std::move(other.type_erased_lambda);
         }
         return *this;
@@ -157,6 +162,12 @@ struct ScalarObjectiveTerm : ScalarObjectiveTermBase<PassiveT>
     Eigen::Index n_elements() const override
     {
         return (Eigen::Index)element_handles.size();
+    }
+
+    void set_settings(
+            const EvalSettings& _settings) override
+    {
+        settings = &_settings;
     }
 
     PassiveT eval(
@@ -170,7 +181,7 @@ struct ScalarObjectiveTerm : ScalarObjectiveTermBase<PassiveT>
         // Eval elements using plain double type
         std::vector<PassiveT> element_results(element_handles.size());
 
-        parallel_for(element_handles.size(), settings, [&] (Eigen::Index i_element)
+        parallel_for(element_handles.size(), *settings, [&] (Eigen::Index i_element)
         {
             // Call user code
             PassiveElementType element(element_handles[i_element], _x);
@@ -200,7 +211,7 @@ struct ScalarObjectiveTerm : ScalarObjectiveTermBase<PassiveT>
         std::vector<ActiveFirstOrderElementType> elements(element_handles.size());
         std::vector<ActiveFirstOrderScalarType> element_results(element_handles.size());
 
-        parallel_for(element_handles.size(), settings, [&] (Eigen::Index i_element)
+        parallel_for(element_handles.size(), *settings, [&] (Eigen::Index i_element)
         {
             // Call user code, which initializes active variables via element.variables(...) and performs computations.
             elements[i_element] = ActiveFirstOrderElementType(element_handles[i_element], _x);
@@ -239,7 +250,7 @@ struct ScalarObjectiveTerm : ScalarObjectiveTermBase<PassiveT>
         std::vector<ActiveSecondOrderElementType> elements(element_handles.size());
         std::vector<ActiveSecondOrderScalarType> element_results(element_handles.size());
 
-        parallel_for(element_handles.size(), settings, [&] (Eigen::Index i_element)
+        parallel_for(element_handles.size(), *settings, [&] (Eigen::Index i_element)
         {
             // Call user code, which initializes active variables via element.variables(...) and performs computations.
             elements[i_element] = ActiveSecondOrderElementType(element_handles[i_element], _x);
@@ -281,7 +292,7 @@ private:
     const Eigen::Index n_vars_global;
 
     const std::vector<ElementHandleT> element_handles;
-    const EvalSettings& settings;
+    const EvalSettings* settings;
 
     // Store the user-provided lambda function
     // without instantiating it with a specific scalar type yet.

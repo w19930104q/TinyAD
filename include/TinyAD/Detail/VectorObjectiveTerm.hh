@@ -24,6 +24,10 @@ struct VectorObjectiveTermBase
 {
     virtual ~VectorObjectiveTermBase() = default;
 
+    // Re-target the settings reference (e.g. after the owning VectorFunction was moved).
+    virtual void set_settings(
+            const EvalSettings& _settings) = 0;
+
     virtual Eigen::VectorX<PassiveT> eval(
             const Eigen::VectorX<PassiveT>& _x) const = 0;
 
@@ -123,7 +127,7 @@ struct VectorObjectiveTerm : VectorObjectiveTermBase<PassiveT>
             const EvalSettings& _settings)
         : n_vars_global(_n_global),
           element_handles(_element_handles),
-          settings(_settings)
+          settings(&_settings)
     {
         static_assert (std::is_same_v<
                 std::decay_t<decltype((_eval_element(std::declval<PassiveElementType&>())))>,
@@ -148,11 +152,18 @@ struct VectorObjectiveTerm : VectorObjectiveTermBase<PassiveT>
     {
         if (this != &other)
         {
-            // n_vars_global and settings are const, so we can't move them
+            // n_vars_global is const, so we can't move it
             element_handles = std::move(other.element_handles);
+            settings = other.settings;
             type_erased_lambda = std::move(other.type_erased_lambda);
         }
         return *this;
+    }
+
+    void set_settings(
+            const EvalSettings& _settings) override
+    {
+        settings = &_settings;
     }
 
     Eigen::VectorX<PassiveT> eval(
@@ -166,7 +177,7 @@ struct VectorObjectiveTerm : VectorObjectiveTermBase<PassiveT>
         // Eval elements using plain double type
         Eigen::VectorX<PassiveT> result(n_outputs());
 
-        parallel_for(element_handles.size(), settings, [&] (Eigen::Index i_element)
+        parallel_for(element_handles.size(), *settings, [&] (Eigen::Index i_element)
         {
             // Call user code and write into segment of result vector
             PassiveElementType element(element_handles[i_element], _x);
@@ -191,7 +202,7 @@ struct VectorObjectiveTerm : VectorObjectiveTermBase<PassiveT>
         std::vector<ActiveFirstOrderElementType> elements(element_handles.size());
         std::vector<ActiveFirstOrderEvalElementReturnType> element_results(element_handles.size());
 
-        parallel_for(element_handles.size(), settings, [&] (Eigen::Index i_element)
+        parallel_for(element_handles.size(), *settings, [&] (Eigen::Index i_element)
         {
             elements[i_element] = ActiveFirstOrderElementType(element_handles[i_element], _x);
 
@@ -257,7 +268,7 @@ struct VectorObjectiveTerm : VectorObjectiveTermBase<PassiveT>
         std::vector<ActiveSecondOrderElementType> elements(element_handles.size());
         std::vector<ActiveSecondOrderEvalElementReturnType> element_results(element_handles.size());
 
-        parallel_for(element_handles.size(), settings, [&] (Eigen::Index i_element)
+        parallel_for(element_handles.size(), *settings, [&] (Eigen::Index i_element)
         {
             elements[i_element] = ActiveSecondOrderElementType(element_handles[i_element], _x);
 
@@ -334,7 +345,7 @@ struct VectorObjectiveTerm : VectorObjectiveTermBase<PassiveT>
         // Eval elements using plain double type
         Eigen::VectorX<PassiveT> squared_element_results(element_handles.size());
 
-        parallel_for(element_handles.size(), settings, [&] (Eigen::Index i_element)
+        parallel_for(element_handles.size(), *settings, [&] (Eigen::Index i_element)
         {
             // Call user code and square results
             PassiveElementType element(element_handles[i_element], _x);
@@ -359,7 +370,7 @@ private:
     const Eigen::Index n_vars_global;
 
     const std::vector<ElementHandleT> element_handles;
-    const EvalSettings& settings;
+    const EvalSettings* settings;
 
     // Store the user-provided lambda function
     // without instantiating it with a specific scalar type yet.

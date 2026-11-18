@@ -28,7 +28,11 @@ ScalarFunction(ScalarFunction&& _other)
       variable_handles(std::move(_other.variable_handles)),
       objective_terms(std::move(_other.objective_terms))
 {
-
+    // Objective terms hold a pointer to the owning function's settings member.
+    // Re-target them to this object (they still point to the moved-from object,
+    // which would dangle after its destruction).
+    for (auto& objective : objective_terms)
+        objective->set_settings(settings);
 }
 
 template <int variable_dimension, typename PassiveT, typename VariableHandleT>
@@ -41,6 +45,11 @@ operator=(ScalarFunction&& _other)
     n_elements = _other.n_elements;
     variable_handles = std::move(_other.variable_handles);
     objective_terms = std::move(_other.objective_terms);
+
+    // Re-target objective term settings pointers to this object (see move constructor).
+    for (auto& objective : objective_terms)
+        objective->set_settings(settings);
+
     return *this;
 }
 
@@ -372,7 +381,7 @@ Eigen::SparseMatrix<PassiveT>
 ScalarFunction<variable_dimension, PassiveT, VariableHandleT>::
 eval_hessian_of_quadratic() const
 {
-    return eval_hessian(Eigen::VectorXd::Zero(n_vars));
+    return eval_hessian(Eigen::VectorX<PassiveT>::Zero(n_vars));
 }
 
 template <int variable_dimension, typename PassiveT, typename VariableHandleT>

@@ -28,7 +28,11 @@ VectorFunction(VectorFunction&& _other)
       variable_handles(std::move(_other.variable_handles)),
       objective_terms(std::move(_other.objective_terms))
 {
-
+    // Objective terms hold a pointer to the owning function's settings member.
+    // Re-target them to this object (they still point to the moved-from object,
+    // which would dangle after its destruction).
+    for (auto& objective : objective_terms)
+        objective->set_settings(settings);
 }
 
 template <int variable_dimension, typename PassiveT, typename VariableHandleT>
@@ -42,6 +46,11 @@ operator=(VectorFunction&& _other)
     n_outputs = _other.n_outputs;
     variable_handles = std::move(_other.variable_handles);
     objective_terms = std::move(_other.objective_terms);
+
+    // Re-target objective term settings pointers to this object (see move constructor).
+    for (auto& objective : objective_terms)
+        objective->set_settings(settings);
+
     return *this;
 }
 
